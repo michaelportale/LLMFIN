@@ -1,0 +1,20 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Environments
+env/
+venv/
+.venv/
+
+# System
+.DS_Store
+
+# Data and models
+data/
+models/
+*.csv
+
+# Secrets
+.env
+
