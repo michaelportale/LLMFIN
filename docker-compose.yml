@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: rl-api
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/rl_results
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-defaultsecretkey}
+      - JWT_TOKEN_EXPIRY=3600
+      - RATE_LIMIT_DEFAULT=100
+      - RATE_LIMIT_WINDOW=60
+      - CORS_ALLOWED_ORIGINS=*
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - rl-network
+
+  mongodb:
+    image: mongo:6.0
+    container_name: rl-mongodb
+    volumes:
+      - mongodb-data:/data/db
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=rl_results
+    restart: unless-stopped
+    networks:
+      - rl-network
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: rl-redis
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - rl-network
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: rl-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - rl-network
+
+  grafana:
+    image: grafana/grafana:10.0.3
+    container_name: rl-grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - rl-network
+
+volumes:
+  mongodb-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  rl-network:
+    driver: bridge 

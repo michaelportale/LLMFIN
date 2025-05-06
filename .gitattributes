@@ -1,0 +1,44 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Python files
+*.py text diff=python
+
+# Web files
+*.html text diff=html
+*.css text diff=css
+*.js text diff=javascript
+
+# Images should be treated as binary
+# (binary is a macro for -text -diff)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text
+
+# Model files
+*.h5 binary
+*.zip binary
+*.pkl binary
+*.pt binary
+*.pth binary
+
+# CSV files
+*.csv text
+
+# Jupyter notebooks
+*.ipynb text
+
+# Configuration files
+*.yml text
+*.yaml text
+*.json text
+*.toml text
+*.ini text
+
+# Special files
+LICENSE text
+README.md text
+CHANGELOG.md text 

@@ -1,0 +1,32 @@
+{
+  "model": {
+    "avg_return": 0.6458303928375244,
+    "avg_final_value": 10000.0,
+    "initial_value": 10000,
+    "final_value": 10000,
+    "total_return": 0.0,
+    "max_drawdown": 0,
+    "sharpe_ratio": 0.0,
+    "num_trades": 0,
+    "trade_examples": []
+  },
+  "benchmark": {
+    "initial_value": 10000.0,
+    "final_value": 18878.079315185547,
+    "total_return": 0.8878079315185546,
+    "max_drawdown": 0.29471344493101087,
+    "sharpe_ratio": 1.1728189583948938
+  },
+  "outperformance": -0.8878079315185546,
+  "algorithm": "PPO",
+  "hyperparameters": {
+    "learning_rate": 0.0001,
+    "batch_size": 64,
+    "n_steps": 2048,
+    "n_epochs": 10,
+    "gamma": 0.99,
+    "early_stopping": true,
+    "patience": 5,
+    "min_improvement": 0.01
+  }
+}

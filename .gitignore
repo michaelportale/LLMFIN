@@ -1,20 +1,70 @@
 # Byte-compiled files
 __pycache__/
 *.py[cod]
+*$py.class
 
 # Environments
 env/
 venv/
 .venv/
+ENV/
+.env
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
 
 # System
 .DS_Store
+Thumbs.db
 
-# Data and models
-data/
-models/
-*.csv
+# Logs
+*.log
+app.log
+training_error.log
 
-# Secrets
-.env
+# Data and models - keep structure but ignore content
+/data/**/*.csv
+/data/**/*.json
+!/data/**/.gitkeep
+
+/models/**/*.h5
+/models/**/*.zip
+/models/**/*.pkl
+!/models/**/.gitkeep
+
+# Temporary files
+/cache/**/*
+!/cache/**/.gitkeep
+*.tmp
+*.bak
+*.swp
+
+# IDE specific files
+.idea/
+.vscode/
+*.code-workspace
+.ipynb_checkpoints/
+
+# Training logs and checkpoints
+/logs/*/checkpoints/
+/logs/*/*.monitor.csv
+/logs/*/*.csv
+!/logs/**/.gitkeep
+
+# Results files except .gitkeep
+/results/**/*
+!/results/**/.gitkeep
+
+# Notebooks except .gitkeep
+/notebooks/**/*
+!/notebooks/**/.gitkeep
+!/notebooks/**/*.ipynb
+
+# Conda environment files
+Miniconda3-latest-MacOSX-arm64.sh
+
+# Local configuration but not deployment
+/configs/local.ini
 

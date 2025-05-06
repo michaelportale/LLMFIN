@@ -1,0 +1,330 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for Reinforcement Learning System infrastructure'
+
+Parameters:
+  VpcCIDR:
+    Description: CIDR block for the VPC
+    Type: String
+    Default: 10.0.0.0/16
+  
+  PublicSubnet1CIDR:
+    Description: CIDR block for the public subnet in AZ 1
+    Type: String
+    Default: 10.0.1.0/24
+  
+  PublicSubnet2CIDR:
+    Description: CIDR block for the public subnet in AZ 2
+    Type: String
+    Default: 10.0.2.0/24
+  
+  ClusterName:
+    Description: Name of the ECS cluster
+    Type: String
+    Default: rl-cluster
+  
+  ServiceName:
+    Description: Name of the ECS service
+    Type: String
+    Default: rl-service
+  
+  MongoDBInstanceType:
+    Description: EC2 instance type for MongoDB
+    Type: String
+    Default: t3.medium
+  
+  MongoDBUsername:
+    Description: Username for MongoDB
+    Type: String
+    Default: rluser
+  
+  MongoDBPassword:
+    Description: Password for MongoDB
+    Type: String
+    NoEcho: true
+    Default: rlsecret123
+  
+  RedisInstanceType:
+    Description: ElastiCache instance type for Redis
+    Type: String
+    Default: cache.t3.small
+
+Resources:
+  # VPC resources
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-IGW
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Ref PublicSubnet1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet1
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Ref PublicSubnet2CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicSubnet2
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-PublicRT
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  # Security groups
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for RL application
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-AppSG
+
+  MongoDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MongoDB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 27017
+          ToPort: 27017
+          SourceSecurityGroupId: !Ref AppSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-MongoDBSG
+
+  RedisSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Redis
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref AppSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-RedisSG
+
+  # IAM roles
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Path: /
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+      Path: /
+
+  # MongoDB
+  MongoDBSubnetGroup:
+    Type: AWS::DocDB::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for MongoDB
+      SubnetIds:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-MongoDBSubnetGroup
+
+  MongoDBCluster:
+    Type: AWS::DocDB::DBCluster
+    Properties:
+      DBClusterIdentifier: !Sub ${AWS::StackName}-mongodb
+      MasterUsername: !Ref MongoDBUsername
+      MasterUserPassword: !Ref MongoDBPassword
+      VpcSecurityGroupIds:
+        - !Ref MongoDBSecurityGroup
+      DBSubnetGroupName: !Ref MongoDBSubnetGroup
+      StorageEncrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-MongoDBCluster
+
+  MongoDBInstance:
+    Type: AWS::DocDB::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref MongoDBCluster
+      DBInstanceClass: !Ref MongoDBInstanceType
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-MongoDBInstance
+
+  # Redis
+  RedisSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: Subnet group for Redis
+      SubnetIds:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+
+  RedisCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      CacheNodeType: !Ref RedisInstanceType
+      Engine: redis
+      NumCacheNodes: 1
+      VpcSecurityGroupIds:
+        - !Ref RedisSecurityGroup
+      CacheSubnetGroupName: !Ref RedisSubnetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-RedisCluster
+
+  # ECS cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      CapacityProviders:
+        - FARGATE
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ECSCluster
+
+  # Log group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${AWS::StackName}
+      RetentionInDays: 30
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub ${AWS::StackName}-VpcId
+
+  SubnetIds:
+    Description: Subnet IDs
+    Value: !Join [',', [!Ref PublicSubnet1, !Ref PublicSubnet2]]
+    Export:
+      Name: !Sub ${AWS::StackName}-SubnetIds
+
+  SecurityGroupIds:
+    Description: Security group IDs for application
+    Value: !Ref AppSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-SecurityGroupIds
+
+  ECSClusterName:
+    Description: ECS cluster name
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub ${AWS::StackName}-ECSClusterName
+
+  ECSTaskExecutionRoleArn:
+    Description: ECS task execution role ARN
+    Value: !GetAtt ECSTaskExecutionRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ECSTaskExecutionRoleArn
+
+  ECSTaskRoleArn:
+    Description: ECS task role ARN
+    Value: !GetAtt ECSTaskRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-ECSTaskRoleArn
+
+  MongoDBEndpoint:
+    Description: MongoDB endpoint
+    Value: !GetAtt MongoDBCluster.Endpoint
+    Export:
+      Name: !Sub ${AWS::StackName}-MongoDBEndpoint
+
+  RedisEndpoint:
+    Description: Redis endpoint
+    Value: !GetAtt RedisCluster.RedisEndpoint.Address
+    Export:
+      Name: !Sub ${AWS::StackName}-RedisEndpoint 

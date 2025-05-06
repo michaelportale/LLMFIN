@@ -1,0 +1,27 @@
+# Data Fetcher Configuration
+base_data_dir: data
+period: '5y'  # 5 years of data
+interval: '1d'  # Daily data points
+max_symbols: 200  # Limit to 200 symbols total
+threads: 15  # Use 15 threads for parallel downloading
+
+# Data sources configuration
+sources:
+  # Market indices
+  sp500: true      # Fetch S&P 500 stocks
+  nasdaq100: true  # Fetch NASDAQ 100 stocks
+  dow30: false     # Skip Dow Jones stocks
+  
+  # Add custom list of symbols
+  custom_list:
+    - TSLA
+    - NVDA
+    - AVGO
+    - AMD
+  
+  # Add specific sectors
+  sectors:
+    - technology
+    - healthcare
+    - financial
+    - energy 

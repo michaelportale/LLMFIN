@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Search</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/css/stock_search.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <div class="container py-5">
+        <h1 class="mb-4 text-center">Stock Search</h1>
+        <p class="lead text-center mb-5">Search for any real stock to add to your tracking list</p>
+
+        <div class="row">
+            <div class="col-md-8 mx-auto">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-body">
+                        <div class="search-box mb-3">
+                            <label for="searchQuery" class="form-label">Search for stocks by name, symbol, or description</label>
+                            <input type="text" class="form-control form-control-lg" id="searchQuery" 
+                                   placeholder="Example: Apple, TSLA, banking, technology..." autocomplete="off">
+                            <div class="spinner-border text-primary" role="status" id="searchSpinner">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="market" id="marketUS" value="US" checked>
+                                <label class="form-check-label" for="marketUS">US Markets</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="market" id="marketAll" value="ALL">
+                                <label class="form-check-label" for="marketAll">All Markets</label>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="searchButton">Search</button>
+                    </div>
+                </div>
+
+                <div id="resultsContainer" class="mb-4 hidden">
+                    <h3 class="mb-3">Search Results</h3>
+                    <div class="row" id="stockResults"></div>
+                </div>
+
+                <div id="selectionContainer" class="mb-4 hidden">
+                    <h3 class="mb-3">Selected Stocks</h3>
+                    <div id="selectedStocksContainer" class="mb-3"></div>
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-outline-danger me-2" id="clearSelectionButton">Clear Selection</button>
+                        <button class="btn btn-success" id="addStocksButton">Add to Tracking List</button>
+                    </div>
+                </div>
+
+                <div id="statusContainer" class="alert alert-success hidden">
+                </div>
+
+                <!-- Stock Details Modal -->
+                <div class="modal fade" id="stockDetailsModal" tabindex="-1" aria-labelledby="stockDetailsModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="stockDetailsModalLabel">Stock Details</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="details-container" id="stockDetailsContainer">
+                                    <div class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn btn-primary" id="addToSelectionButton">Add to Selection</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // DOM elements
+        const searchQueryInput = document.getElementById('searchQuery');
+        const searchButton = document.getElementById('searchButton');
+        const searchSpinner = document.getElementById('searchSpinner');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const stockResults = document.getElementById('stockResults');
+        const selectionContainer = document.getElementById('selectionContainer');
+        const selectedStocksContainer = document.getElementById('selectedStocksContainer');
+        const clearSelectionButton = document.getElementById('clearSelectionButton');
+        const addStocksButton = document.getElementById('addStocksButton');
+        const statusContainer = document.getElementById('statusContainer');
+        const stockDetailsModal = new bootstrap.Modal(document.getElementById('stockDetailsModal'));
+        const stockDetailsContainer = document.getElementById('stockDetailsContainer');
+        const addToSelectionButton = document.getElementById('addToSelectionButton');
+
+        // State
+        let selectedStocks = new Set();
+        let currentStock = null;
+        let searchResults = [];
+
+        // Event listeners
+        searchButton.addEventListener('click', searchStocks);
+        searchQueryInput.addEventListener('keyup', event => {
+            if (event.key === 'Enter') {
+                searchStocks();
+            }
+        });
+        clearSelectionButton.addEventListener('click', clearSelection);
+        addStocksButton.addEventListener('click', addSelectedStocks);
+        addToSelectionButton.addEventListener('click', addCurrentStockToSelection);
+
+        // Functions
+        async function searchStocks() {
+            const query = searchQueryInput.value.trim();
+            if (!query) return;
+
+            // Get selected market
+            const marketRadios = document.getElementsByName('market');
+            let market = 'US';
+            for (const radio of marketRadios) {
+                if (radio.checked) {
+                    market = radio.value;
+                    break;
+                }
+            }
+
+            // Show loading
+            searchSpinner.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+            statusContainer.classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/stocks/search?query=${encodeURIComponent(query)}&market=${market}&limit=20`);
+                const data = await response.json();
+
+                // Hide loading
+                searchSpinner.classList.add('hidden');
+
+                if (response.ok) {
+                    searchResults = data.results;
+                    displaySearchResults(data.results);
+                } else {
+                    throw new Error(data.error || 'Error searching for stocks');
+                }
+            } catch (error) {
+                searchSpinner.classList.add('hidden');
+                showStatus(error.message, 'danger');
+            }
+        }
+
+        function displaySearchResults(results) {
+            stockResults.innerHTML = '';
+
+            if (results.length === 0) {
+                stockResults.innerHTML = '<div class="col-12"><div class="alert alert-info">No stocks found matching your search.</div></div>';
+                resultsContainer.classList.remove('hidden');
+                return;
+            }
+
+            results.forEach((stock, index) => {
+                const isSelected = selectedStocks.has(stock.symbol);
+                const card = document.createElement('div');
+                card.className = `col-md-6 mb-3`;
+                card.innerHTML = `
+                    <div class="card stock-card h-100 ${isSelected ? 'selected' : ''}" data-symbol="${stock.symbol}" data-index="${index}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <h5 class="card-title">${stock.symbol}</h5>
+                                <span class="badge bg-${isSelected ? 'success' : 'primary'}">${isSelected ? 'Selected' : 'Add'}</span>
+                            </div>
+                            <h6 class="card-subtitle mb-2 text-muted">${stock.name || ''}</h6>
+                            <p class="card-text small mb-0">
+                                ${stock.exchange ? `Exchange: ${stock.exchange}<br>` : ''}
+                                ${stock.sector ? `Sector: ${stock.sector}<br>` : ''}
+                                ${stock.industry ? `Industry: ${stock.industry}` : ''}
+                            </p>
+                        </div>
+                    </div>
+                `;
+                stockResults.appendChild(card);
+
+                // Add click event
+                const stockCard = card.querySelector('.stock-card');
+                stockCard.addEventListener('click', async (e) => {
+                    // If clicking on the badge, toggle selection
+                    if (e.target.classList.contains('badge')) {
+                        toggleStockSelection(stock);
+                    } else {
+                        // Otherwise show details
+                        await showStockDetails(stock.symbol);
+                    }
+                });
+            });
+
+            resultsContainer.classList.remove('hidden');
+            updateSelectionUI();
+        }
+
+        function toggleStockSelection(stock) {
+            if (selectedStocks.has(stock.symbol)) {
+                selectedStocks.delete(stock.symbol);
+            } else {
+                selectedStocks.add(stock.symbol);
+            }
+            
+            // Update UI
+            updateSelectionUI();
+            updateSearchResultsUI();
+        }
+
+        function updateSelectionUI() {
+            if (selectedStocks.size > 0) {
+                selectionContainer.classList.remove('hidden');
+                selectedStocksContainer.innerHTML = '';
+                
+                selectedStocks.forEach(symbol => {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge bg-success selected-stock-badge';
+                    badge.innerHTML = `${symbol} <button type="button" class="btn-close btn-close-white" aria-label="Remove" data-symbol="${symbol}"></button>`;
+                    selectedStocksContainer.appendChild(badge);
+                    
+                    // Add remove event
+                    const closeButton = badge.querySelector('.btn-close');
+                    closeButton.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        selectedStocks.delete(symbol);
+                        updateSelectionUI();
+                        updateSearchResultsUI();
+                    });
+                });
+            } else {
+                selectionContainer.classList.add('hidden');
+            }
+        }
+
+        function updateSearchResultsUI() {
+            const stockCards = document.querySelectorAll('.stock-card');
+            stockCards.forEach(card => {
+                const symbol = card.dataset.symbol;
+                const badge = card.querySelector('.badge');
+                
+                if (selectedStocks.has(symbol)) {
+                    card.classList.add('selected');
+                    badge.className = 'badge bg-success';
+                    badge.textContent = 'Selected';
+                } else {
+                    card.classList.remove('selected');
+                    badge.className = 'badge bg-primary';
+                    badge.textContent = 'Add';
+                }
+            });
+        }
+
+        function clearSelection() {
+            selectedStocks.clear();
+            updateSelectionUI();
+            updateSearchResultsUI();
+        }
+
+        async function addSelectedStocks() {
+            if (selectedStocks.size === 0) return;
+
+            // Disable button and show loading state
+            addStocksButton.disabled = true;
+            addStocksButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...';
+
+            try {
+                // Make API call to add stocks
+                const response = await fetch('/api/stocks/add?fetch=true', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        symbols: Array.from(selectedStocks)
+                    })
+                });
+
+                const data = await response.json();
+
+                // Reset button
+                addStocksButton.disabled = false;
+                addStocksButton.textContent = 'Add to Tracking List';
+
+                if (response.ok) {
+                    // Show success message
+                    showStatus(`Successfully added ${data.symbols.length} stocks to tracking list. ${data.fetched.length} were immediately fetched.`, 'success');
+                    clearSelection();
+                } else {
+                    throw new Error(data.error || 'Failed to add stocks');
+                }
+            } catch (error) {
+                // Reset button and show error
+                addStocksButton.disabled = false;
+                addStocksButton.textContent = 'Add to Tracking List';
+                showStatus(error.message, 'danger');
+            }
+        }
+
+        async function showStockDetails(symbol) {
+            // Reset modal
+            stockDetailsContainer.innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            `;
+            
+            // Set current stock
+            currentStock = symbol;
+            
+            // Update modal title
+            document.getElementById('stockDetailsModalLabel').textContent = `Stock Details: ${symbol}`;
+            
+            // Update button state
+            addToSelectionButton.textContent = selectedStocks.has(symbol) ? 'Remove from Selection' : 'Add to Selection';
+            
+            // Show modal
+            stockDetailsModal.show();
+            
+            try {
+                // Fetch stock details
+                const response = await fetch(`/api/stocks/details/${symbol}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayStockDetails(data);
+                } else {
+                    throw new Error(data.error || 'Error fetching stock details');
+                }
+            } catch (error) {
+                stockDetailsContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function displayStockDetails(details) {
+            const hasError = details.error !== undefined;
+            
+            if (hasError) {
+                stockDetailsContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        ${details.error}
+                    </div>
+                `;
+                return;
+            }
+            
+            // Format currency
+            const formatCurrency = (value) => {
+                if (value === null || value === undefined) return 'N/A';
+                
+                const formatter = new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: details.currency || 'USD',
+                    maximumFractionDigits: 2,
+                    notation: value > 1000000 ? 'compact' : 'standard'
+                });
+                
+                return formatter.format(value);
+            };
+            
+            // Format percent
+            const formatPercent = (value) => {
+                if (value === null || value === undefined) return 'N/A';
+                return `${(value).toFixed(2)}%`;
+            };
+            
+            const html = `
+                <div class="row mb-4">
+                    <div class="col-md-8">
+                        <h3>${details.name}</h3>
+                        <h5 class="text-muted">${details.symbol} - ${details.exchange}</h5>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <h3>${formatCurrency(details.price)}</h3>
+                        <h5 class="text-${details.price_change > 0 ? 'success' : 'danger'}">
+                            ${details.price_change > 0 ? '▲' : '▼'} ${formatPercent(details.price_change)}
+                        </h5>
+                    </div>
+                </div>
+                
+                <div class="alert ${details.has_data ? 'alert-success' : 'alert-warning'} mb-4">
+                    ${details.has_data 
+                        ? `Data for this stock is already in your system.` 
+                        : `This stock is not currently in your tracking list. Add it to start collecting data.`}
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h5>Company Information</h5>
+                        <table class="table table-sm">
+                            <tr>
+                                <th>Sector</th>
+                                <td>${details.sector || 'N/A'}</td>
+                            </tr>
+                            <tr>
+                                <th>Industry</th>
+                                <td>${details.industry || 'N/A'}</td>
+                            </tr>
+                            <tr>
+                                <th>Market Cap</th>
+                                <td>${formatCurrency(details.market_cap)}</td>
+                            </tr>
+                            <tr>
+                                <th>Website</th>
+                                <td>${details.website ? `<a href="${details.website}" target="_blank">${details.website}</a>` : 'N/A'}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Financial Metrics</h5>
+                        <table class="table table-sm">
+                            <tr>
+                                <th>P/E Ratio</th>
+                                <td>${details.pe_ratio !== null ? details.pe_ratio.toFixed(2) : 'N/A'}</td>
+                            </tr>
+                            <tr>
+                                <th>EPS</th>
+                                <td>${details.eps !== null ? details.eps.toFixed(2) : 'N/A'}</td>
+                            </tr>
+                            <tr>
+                                <th>Dividend Yield</th>
+                                <td>${details.dividend_yield !== null ? `${details.dividend_yield.toFixed(2)}%` : 'N/A'}</td>
+                            </tr>
+                            <tr>
+                                <th>52-Week Range</th>
+                                <td>${formatCurrency(details['52w_low'])} - ${formatCurrency(details['52w_high'])}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                
+                ${details.description ? `
+                <div class="mb-4">
+                    <h5>About the Company</h5>
+                    <p>${details.description}</p>
+                </div>
+                ` : ''}
+                
+                <div class="mb-3">
+                    <h5>Analyst Ratings</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <p><strong>Recommendation:</strong> ${details.recommendation || 'N/A'}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong>Target Price:</strong> ${formatCurrency(details.target_price)}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            stockDetailsContainer.innerHTML = html;
+        }
+
+        function addCurrentStockToSelection() {
+            if (!currentStock) return;
+            
+            if (selectedStocks.has(currentStock)) {
+                selectedStocks.delete(currentStock);
+                addToSelectionButton.textContent = 'Add to Selection';
+            } else {
+                selectedStocks.add(currentStock);
+                addToSelectionButton.textContent = 'Remove from Selection';
+            }
+            
+            updateSelectionUI();
+            updateSearchResultsUI();
+        }
+
+        function showStatus(message, type = 'success') {
+            statusContainer.className = `alert alert-${type}`;
+            statusContainer.textContent = message;
+            statusContainer.classList.remove('hidden');
+            
+            // Scroll to the status container
+            statusContainer.scrollIntoView({ behavior: 'smooth' });
+            
+            // Auto-hide after 5 seconds for success messages
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusContainer.classList.add('hidden');
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html> 
